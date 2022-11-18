@@ -6,10 +6,10 @@
 
 // Function declarations
 
-static PyObject* codetrace_start();
+static PyObject* codetrace_watch();
 
 static PyMethodDef CodeTrace_methods[] = {
-    {"start", (PyCFunction)codetrace_start, METH_NOARGS, "start code trace"},
+    {"watch", (PyCFunction)codetrace_watch, METH_NOARGS, "start code trace"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -25,9 +25,9 @@ static struct PyModuleDef codetracemodule = {
 };
 
 static PyObject*
-codetrace_start()
+codetrace_watch()
 {
-    printf("Start, OK!\n");
+    printf("watch Code, OK!\n");
     Py_RETURN_NONE;
 }
 
