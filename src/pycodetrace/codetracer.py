@@ -1,4 +1,5 @@
-from typing import Union
+import inspect
+from typing import Union, Any
 
 import pycodetrace.codetrace as codetrace
 
@@ -47,8 +48,8 @@ class CodeTracer(object):
 
         # self._codetracer.config(**cfg)
         
-    def watch(self) -> None:
-        self._codetracer.watch()
+    def watch(self, obj: Any) -> None:
+        self._codetracer.watch(obj)
         
     def unwatch(self) -> None:
         pass

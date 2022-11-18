@@ -1,15 +1,16 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <frameobject.h>
 
 #include "codetrace.h"
 #include "utils.h"
 
 // Function declarations
 
-static PyObject* codetrace_watch();
+static PyObject* codetrace_watch(CodeTracerObject *self, PyObject *args);
 
 static PyMethodDef CodeTrace_methods[] = {
-    {"watch", (PyCFunction)codetrace_watch, METH_NOARGS, "start code trace"},
+    {"watch", (PyCFunction)codetrace_watch, METH_VARARGS, "start code trace"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -25,9 +26,28 @@ static struct PyModuleDef codetracemodule = {
 };
 
 static PyObject*
-codetrace_watch()
+codetrace_watch(CodeTracerObject *self, PyObject *args)
 {
-    printf("watch Code, OK!\n");
+    PyObject* obj = NULL;
+    if (!PyArg_ParseTuple(args, "O", &obj)) {
+        return NULL;
+    }
+
+    if (self->node->obj == NULL) {
+        self->node->next = NULL;
+        self->node->obj = obj;
+    } else {
+        struct ObjectNode* tmp = self->node;
+        self->node = (struct ObjectNode*) PyMem_Calloc(1, sizeof(struct ObjectNode));
+        self->node->next = tmp;
+    }
+
+    
+    PyFrameObject *frame = PyEval_GetFrame()->f_back;
+    Print_Obj(frame->f_globals);
+
+    self->total_track++; // watch ele number
+
     Py_RETURN_NONE;
 }
 
@@ -48,6 +68,7 @@ CodeTracer_New(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->node = node;
     self->output_file = NULL;
     self->total_track = 0;
+    self->collecting = -1;
     return (PyObject *)self;
 }
 
