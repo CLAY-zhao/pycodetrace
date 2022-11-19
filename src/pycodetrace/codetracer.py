@@ -54,6 +54,15 @@ class CodeTracer(object):
     def unwatch(self) -> None:
         pass
 
+    def stop(self) -> None:
+        self._codetracer.stop()
+
+    def __enter__(self) -> "CodeTracer":
+        return self
+
+    def __exit__(self, type, value, trace) -> None:
+        self.stop()
+
     def install(self, func="watch") -> None:
         import builtins
         setattr(builtins, func, self)

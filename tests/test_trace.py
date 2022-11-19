@@ -5,5 +5,6 @@ b = 1
 
 tracer.watch(a)
 
+c = 1
 
-print("end")
+print(1)

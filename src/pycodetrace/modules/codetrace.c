@@ -7,12 +7,19 @@
 
 // Function declarations
 
+int codetrace_tracefuncdisabled(PyObject* obj, PyFrameObject* frame, int what, PyObject* arg);
+int codetrace_tracefunc(PyObject* obj, PyFrameObject* frame, int what, PyObject* arg);
 static PyObject* codetrace_watch(CodeTracerObject *self, PyObject *args);
+static PyObject* codetrace_stop(CodeTracerObject* self, PyObject* args);
 
 static PyMethodDef CodeTrace_methods[] = {
-    {"watch", (PyCFunction)codetrace_watch, METH_VARARGS, "start code trace"},
+    {"watch", (PyCFunction)codetrace_watch, METH_VARARGS, "watch code"},
+    {"stop", (PyCFunction)codetrace_stop, METH_VARARGS, "stop codetrace"},
     {NULL, NULL, 0, NULL}
 };
+
+PyFrameObject* curr_frame = NULL;
+PyObject* inspect_module = NULL;
 
 // ============================================================================
 // Python interface
@@ -25,8 +32,68 @@ static struct PyModuleDef codetracemodule = {
     .m_size = -1
 };
 
+int
+codetrace_tracefuncdisabled(PyObject* obj, PyFrameObject* frame, int what, PyObject* arg)
+{
+    CodeTracerObject* self = (CodeTracerObject*) obj;
+    if (self->tracing) {
+        PyEval_SetTrace(codetrace_tracefunc, obj);
+        return codetrace_tracefunc(obj, frame, what, arg);
+    }
+    return 0;
+}
+
+int
+codetrace_tracefunc(PyObject* obj, PyFrameObject* frame, int what, PyObject* arg)
+{
+    CodeTracerObject* self = (CodeTracerObject*) obj;
+    if (!self->tracing) {
+        PyEval_SetTrace(codetrace_tracefuncdisabled, obj);
+        return 0;
+    }
+
+    curr_frame = frame->f_back; 
+
+    int is_call = (what == PyTrace_CALL || what == PyTrace_C_CALL);
+    int is_return = (what == PyTrace_RETURN || what == PyTrace_C_RETURN || what == PyTrace_C_EXCEPTION);
+    int is_python = (what == PyTrace_CALL || what == PyTrace_RETURN);
+    int is_c = (what == PyTrace_C_CALL || what == PyTrace_C_RETURN || what == PyTrace_C_EXCEPTION);
+
+    PyObject* getframeinfo_method = PyObject_GetAttrString(inspect_module, "getframeinfo");
+    if (!getframeinfo_method) {
+        perror("Failed to access inspect.getframeinfo()");
+        exit(-1);
+    }
+
+    PyObject* tuple = PyTuple_New(2);
+    PyTuple_SetItem(tuple, 0, (PyObject*) curr_frame);
+    PyTuple_SetItem(tuple, 1, PyLong_FromLong(1));
+    PyObject* currentframeinfo = PyObject_CallObject(getframeinfo_method, tuple);
+    if (!currentframeinfo) {
+        perror("Failed to call inspect.getframeinfo()");
+        exit(-1);
+    }
+
+    while (curr_frame) {
+        curr_frame->f_trace = (PyObject*) codetrace_tracefunc;
+        curr_frame = curr_frame->f_back;
+    }
+    
+    PyObject* filename = PyObject_GetAttrString(currentframeinfo, "filename");
+    PyObject* lineno = PyObject_GetAttrString(currentframeinfo, "lineno");
+    PyObject* function = PyObject_GetAttrString(currentframeinfo, "function");
+    PyObject* code_context = PyObject_GetAttrString(currentframeinfo, "code_context");
+
+    Print_Obj(filename);
+    Print_Obj(lineno);
+    Print_Obj(function);
+    Print_Obj(code_context);
+
+    return 0;
+}
+
 static PyObject*
-codetrace_watch(CodeTracerObject *self, PyObject *args)
+codetrace_watch(CodeTracerObject* self, PyObject* args)
 {
     PyObject* obj = NULL;
     if (!PyArg_ParseTuple(args, "O", &obj)) {
@@ -42,12 +109,22 @@ codetrace_watch(CodeTracerObject *self, PyObject *args)
         self->node->next = tmp;
     }
 
-    
-    PyFrameObject *frame = PyEval_GetFrame()->f_back;
-    Print_Obj(frame->f_globals);
-
     self->total_track++; // watch ele number
 
+    if (!self->tracing) {
+        self->tracing = 1;
+        PyEval_SetTrace(codetrace_tracefunc, (PyObject*) self);
+    }
+
+    Py_RETURN_NONE;
+}
+
+static PyObject*
+codetrace_stop(CodeTracerObject* self, PyObject* args)
+{
+    self->tracing = 0;
+    curr_frame = NULL;
+    PyEval_SetTrace(NULL, NULL);
     Py_RETURN_NONE;
 }
 
@@ -55,7 +132,7 @@ codetrace_watch(CodeTracerObject *self, PyObject *args)
 // CodeTracer stuff
 // ============================================================================
 static PyObject *
-CodeTracer_New(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+CodeTracer_New(PyTypeObject* type, PyObject* args, PyObject* kwargs)
 {
     CodeTracerObject *self = (CodeTracerObject *)type->tp_alloc(type, 0);
     self->max_stack_depth = 0;
@@ -68,7 +145,8 @@ CodeTracer_New(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->node = node;
     self->output_file = NULL;
     self->total_track = 0;
-    self->collecting = -1;
+    self->tracing = 0;
+    PyEval_SetTrace(codetrace_tracefuncdisabled, (PyObject*) self);
     return (PyObject *)self;
 }
 
@@ -104,6 +182,8 @@ PyInit_codetrace(void)
         Py_DECREF(&m);
         return NULL;
     }
+
+    inspect_module = PyImport_ImportModule("inspect");
 
     return m;
 }

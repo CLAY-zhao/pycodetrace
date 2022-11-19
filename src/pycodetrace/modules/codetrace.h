@@ -16,7 +16,7 @@ typedef struct
     struct ObjectNode* node;
     int total_track;
     PyObject* output_file;
-    int collecting;
+    int tracing;
 } CodeTracerObject;
 
 #endif
